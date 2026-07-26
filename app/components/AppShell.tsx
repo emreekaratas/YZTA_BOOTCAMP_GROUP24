@@ -5,6 +5,10 @@ import { usePathname } from "next/navigation";
 import AuthNav from "./AuthNav";
 import NotificationBell from "./NotificationBell";
 import ThemeToggle from "./ThemeToggle";
+import GlobeBackground from "./GlobeBackground"; 
+
+// Kürenin arka planda döneceği rotalar
+const GLOBE_ROUTES = ["/kesfet"];
 
 const NAV = [
   { href: "/kesfet", label: "Keşfet" },
@@ -15,6 +19,7 @@ const NAV = [
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isLanding = pathname === "/";
+  const showGlobe = GLOBE_ROUTES.includes(pathname);
 
   if (isLanding) {
     return <>{children}</>;
@@ -22,6 +27,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="relative flex min-h-full flex-col">
+      {showGlobe && <GlobeBackground />}
       <div className="app-grain" aria-hidden="true" />
 
       <header className="app-nav">

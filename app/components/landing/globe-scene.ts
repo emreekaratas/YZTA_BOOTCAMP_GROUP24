@@ -49,17 +49,26 @@ interface Hotspot {
 
 export interface GlobeSceneOptions {
   wrap: HTMLElement;
-  hero: HTMLElement;
-  hotLabel: HTMLElement;
-  dimTargets: HTMLElement[];
   gsap: typeof GsapType;
-  onFocus: (index: number, viaSwitch: boolean) => void;
-  onUnfocus: () => void;
+  hero?: HTMLElement | null;
+  hotLabel?: HTMLElement | null;
+  dimTargets?: HTMLElement[];
+  onFocus?: (index: number, viaSwitch: boolean) => void;
+  onUnfocus?: () => void;
+  ambient?: boolean;
 }
 
 export function createGlobeScene(options: GlobeSceneOptions) {
-  const { wrap, hero, hotLabel, dimTargets, gsap, onFocus, onUnfocus } =
-    options;
+  const {
+    wrap,
+    gsap,
+    hero,
+    hotLabel,
+    dimTargets = [],
+    onFocus,
+    onUnfocus,
+    ambient = false,
+  } = options;
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   const renderer = new THREE.WebGLRenderer({
@@ -67,7 +76,7 @@ export function createGlobeScene(options: GlobeSceneOptions) {
     alpha: true,
     powerPreference: "high-performance",
   });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, ambient ? 1.5 : 2));
   renderer.setSize(wrap.clientWidth, wrap.clientHeight);
   wrap.appendChild(renderer.domElement);
 
@@ -204,7 +213,10 @@ export function createGlobeScene(options: GlobeSceneOptions) {
   const glowTex = createGlowTexture();
   const hotspots: Hotspot[] = [];
 
-  LANDING_LOCATIONS.forEach((loc, i) => {
+  // ambient modda hotspot yok — dizi boş kalır, tick döngüsü sorunsuz çalışır
+  const activeLocations = ambient ? [] : LANDING_LOCATIONS;
+
+  activeLocations.forEach((loc, i) => {
     const dir = latLonToDir(loc.lat, loc.lon);
     const anchor = new THREE.Group();
     anchor.position.copy(dir).multiplyScalar(HS_R);
@@ -315,23 +327,25 @@ export function createGlobeScene(options: GlobeSceneOptions) {
       duration: reduced ? 0.01 : viaSwitch ? 1.25 : 1.7,
       ease: "power3.inOut",
     });
-    hero.classList.add("is-focused");
+    if (hero) {
+      hero.classList.add("is-focused");
+      const glHint = hero.querySelector(".lp-gl-hint");
+      if (glHint) {
+        gsap.to(glHint, {
+          opacity: 0,
+          duration: 0.5,
+          ease: "power2.out",
+          overwrite: "auto",
+        });
+      }
+    }
     gsap.to(dimTargets, {
       opacity: 0.07,
       duration: 0.8,
       ease: "power2.out",
       overwrite: "auto",
     });
-    const glHint = hero.querySelector(".lp-gl-hint");
-    if (glHint) {
-      gsap.to(glHint, {
-        opacity: 0,
-        duration: 0.5,
-        ease: "power2.out",
-        overwrite: "auto",
-      });
-    }
-    onFocus(i, viaSwitch);
+    onFocus?.(i, viaSwitch);
   }
 
   function unfocus() {
@@ -344,14 +358,14 @@ export function createGlobeScene(options: GlobeSceneOptions) {
       duration: reduced ? 0.01 : 1.5,
       ease: "power3.inOut",
     });
-    hero.classList.remove("is-focused");
+    hero?.classList.remove("is-focused");
     gsap.to(dimTargets, {
       opacity: 1,
       duration: 0.8,
       ease: "power2.out",
       overwrite: "auto",
     });
-    onUnfocus();
+    onUnfocus?.();
   }
 
   function onPointerMove(e: PointerEvent) {
@@ -395,12 +409,14 @@ export function createGlobeScene(options: GlobeSceneOptions) {
     if (e.key === "Escape") unfocus();
   }
 
-  wrap.addEventListener("pointermove", onPointerMove);
-  wrap.addEventListener("pointerleave", onPointerLeave);
-  wrap.addEventListener("pointerdown", onPointerDown);
-  wrap.addEventListener("pointerup", onPointerUp);
+  if (!ambient) {
+    wrap.addEventListener("pointermove", onPointerMove);
+    wrap.addEventListener("pointerleave", onPointerLeave);
+    wrap.addEventListener("pointerdown", onPointerDown);
+    wrap.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("keydown", onKeyDown);
+  }
   window.addEventListener("resize", onResize);
-  window.addEventListener("keydown", onKeyDown);
 
   let visible = true;
   const observer = new IntersectionObserver(
@@ -410,7 +426,7 @@ export function createGlobeScene(options: GlobeSceneOptions) {
     },
     { threshold: 0 }
   );
-  observer.observe(hero);
+  observer.observe(hero ?? wrap);
 
   const clock = new THREE.Clock();
   let t = 0;
@@ -497,21 +513,23 @@ export function createGlobeScene(options: GlobeSceneOptions) {
     }
     camera.lookAt(lookTarget);
 
-    if (hovered > -1 && focused === -1) {
-      const h = hotspots[hovered];
-      h.anchor.getWorldPosition(_wp);
-      _wp.project(camera);
-      const r = wrap.getBoundingClientRect();
-      const hr = hero.getBoundingClientRect();
-      const x = (_wp.x * 0.5 + 0.5) * r.width + (r.left - hr.left);
-      const y = (-_wp.y * 0.5 + 0.5) * r.height + (r.top - hr.top);
-      hotLabel.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -165%)`;
-      if (hotLabel.textContent !== h.loc.title) {
-        hotLabel.textContent = h.loc.title;
+    if (hero && hotLabel) {
+      if (hovered > -1 && focused === -1) {
+        const h = hotspots[hovered];
+        h.anchor.getWorldPosition(_wp);
+        _wp.project(camera);
+        const r = wrap.getBoundingClientRect();
+        const hr = hero.getBoundingClientRect();
+        const x = (_wp.x * 0.5 + 0.5) * r.width + (r.left - hr.left);
+        const y = (-_wp.y * 0.5 + 0.5) * r.height + (r.top - hr.top);
+        hotLabel.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -165%)`;
+        if (hotLabel.textContent !== h.loc.title) {
+          hotLabel.textContent = h.loc.title;
+        }
+        hotLabel.classList.add("show");
+      } else {
+        hotLabel.classList.remove("show");
       }
-      hotLabel.classList.add("show");
-    } else {
-      hotLabel.classList.remove("show");
     }
 
     globeUniforms.uTime.value = reduced ? 0 : t;
